@@ -1,0 +1,49 @@
+# Environment variables
+.env
+
+# ML model weights — place files manually; tracked directory via .gitkeep
+trained_models/*.pt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+*.egg
+
+# uv
+uv.lock
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.cache/
+.turbo/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Alembic
+# (migration scripts are tracked; only exclude generated __pycache__)
+
+# Jupyter
+.ipynb_checkpoints/
