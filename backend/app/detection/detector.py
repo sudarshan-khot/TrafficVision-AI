@@ -104,7 +104,7 @@ class DetectionService:
     for the lifetime of the process.
     """
 
-    def __init__(self, model_dir: str = "trained_models") -> None:
+    def __init__(self, model_dir: str = "trained_models", yolo_session=None, helmet_session=None) -> None:
         model_path = Path(model_dir)
         self.use_onnx = False
 
@@ -120,8 +120,14 @@ class DetectionService:
         if has_ort and yolov8_onnx_path.is_file() and helmet_onnx_path.is_file() and yolo_names_path.is_file() and helmet_names_path.is_file():
             self.use_onnx = True
             logger.info("Initializing ONNX models for Inference: %s and %s", yolov8_onnx_path.name, helmet_onnx_path.name)
-            self._yolo_session = ort.InferenceSession(str(yolov8_onnx_path), providers=["CPUExecutionProvider"])
-            self._helmet_session = ort.InferenceSession(str(helmet_onnx_path), providers=["CPUExecutionProvider"])
+            
+            if yolo_session and helmet_session:
+                self._yolo_session = yolo_session
+                self._helmet_session = helmet_session
+                logger.info("Using globally pre-initialized ONNX sessions.")
+            else:
+                self._yolo_session = ort.InferenceSession(str(yolov8_onnx_path), providers=["CPUExecutionProvider"])
+                self._helmet_session = ort.InferenceSession(str(helmet_onnx_path), providers=["CPUExecutionProvider"])
 
             with open(yolo_names_path, "r", encoding="utf-8") as f:
                 self.yolo_names = {int(k): v for k, v in json.load(f).items()}
