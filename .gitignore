@@ -47,3 +47,7 @@ coverage.xml
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Agents/Skills
+.agents/*
+skills-lock.json

@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
 
-# Copy dependency files
-COPY backend/pyproject.toml backend/requirements.txt ./
+# Copy dependency files relative to the repository root context
+COPY backend/pyproject.toml* backend/requirements.txt ./
 
 # Create virtual env and install requirements
 RUN uv venv .venv && \
@@ -48,13 +48,13 @@ COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/.venv"
 
-# Copy application source code
-COPY backend/ /app/
+# Copy the entire contents of the backend folder directly into /app
+COPY backend/ .
 
-# Bake trained models into the image for Free Tier cloud platforms that lack volume mounts.
-# Local development volume mounts will overwrite this directory, retaining dynamic updates.
-COPY trained_models/ /app/trained_models/
+# Copy trained models from the root context into /app/trained_models
+COPY trained_models/ ./trained_models/
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Explicitly use the PORT environment variable provided by Render, defaulting to 8000
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
