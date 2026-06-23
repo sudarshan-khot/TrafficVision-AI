@@ -138,6 +138,7 @@ async def run_startup(app: FastAPI, *, skip_models: bool = False) -> None:
 
     try:
         backend_name = settings.STORAGE_BACKEND.lower()
+        app.state.storage_init_error = None  # will be overwritten on failure
         if backend_name == "supabase":
             # Credentials are resolved from either SUPABASE_S3_* or AWS_* vars
             # by the config validator. MINIO_ENDPOINT holds the full S3 endpoint
@@ -180,22 +181,21 @@ async def run_startup(app: FastAPI, *, skip_models: bool = False) -> None:
         storage = StorageService(backend=backend, bucket=bucket_name)
         await storage.ensure_bucket()
         app.state.storage_service = storage
+        app.state.storage_init_error = None
         logger.info("StorageService ready (backend=%s, bucket=%s)", backend_name, bucket_name)
     except Exception as exc:  # noqa: BLE001
         import traceback as _tb
-        logger.error(
-            "StorageService initialisation failed — storage will be unavailable.\n"
-            "  backend : %s\n"
-            "  endpoint: %s\n"
-            "  bucket  : %s\n"
-            "  error   : %s\n%s",
-            settings.STORAGE_BACKEND,
-            settings.MINIO_ENDPOINT or "<not set>",
-            locals().get("bucket_name", "<not set>"),
-            exc,
-            _tb.format_exc(),
+        tb_str = _tb.format_exc()
+        error_detail = (
+            f"{type(exc).__name__}: {exc}\n"
+            f"backend={settings.STORAGE_BACKEND}, "
+            f"endpoint={settings.MINIO_ENDPOINT or '<not set>'}, "
+            f"bucket={locals().get('bucket_name', '<not set>')}\n"
+            f"Traceback:\n{tb_str}"
         )
+        logger.error("StorageService initialisation failed:\n%s", error_detail)
         app.state.storage_service = None
+        app.state.storage_init_error = error_detail
 
     if skip_models:
         app.state.detection_service = None

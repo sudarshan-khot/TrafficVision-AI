@@ -9,7 +9,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,16 +28,18 @@ router = APIRouter()
 
 @router.post("/upload-image")
 async def upload_image(
+    request: Request,
     file: UploadFile = File(...),
     storage: StorageService = Depends(get_storage_service),
     db: AsyncSession = Depends(get_db),
 ):
     if storage is None:
+        init_error = getattr(request.app.state, "storage_init_error", None)
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
                 "detail": "Storage service unavailable",
-                "reason": "Storage backend failed to initialise at startup. Check server logs for the root cause.",
+                "reason": init_error or "StorageService failed to initialise. No further details available.",
             },
         )
 
