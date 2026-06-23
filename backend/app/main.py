@@ -10,15 +10,46 @@ Responsibilities
 """
 from __future__ import annotations
 
+from __future__ import annotations
+
+import sys
+import traceback
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-import onnxruntime as ort
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+try:
+    import onnxruntime as ort
+    _ort_available = True
+except Exception:
+    print("=" * 60, file=sys.stderr)
+    print("WARNING: onnxruntime failed to import — ML inference disabled", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    sys.stderr.flush()
+    ort = None  # type: ignore[assignment]
+    _ort_available = False
 
-from app.config import settings
+try:
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+except Exception:
+    print("=" * 60, file=sys.stderr)
+    print("FATAL: fastapi failed to import — cannot start", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    sys.stderr.flush()
+    sys.exit(3)
+
+try:
+    from app.config import settings
+except Exception:
+    print("=" * 60, file=sys.stderr)
+    print("FATAL: app.config failed to load — check environment variables", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    sys.stderr.flush()
+    sys.exit(3)
 
 logger = logging.getLogger(__name__)
 
@@ -28,18 +59,20 @@ logger = logging.getLogger(__name__)
 
 YOLO8M_SESSION = None
 YOLO26N_SESSION = None
-try:
-    YOLO8M_SESSION = ort.InferenceSession("trained_models/yolov8m.onnx", providers=["CPUExecutionProvider"])
-    YOLO26N_SESSION = ort.InferenceSession("trained_models/yolo26n.onnx", providers=["CPUExecutionProvider"])
-    logger.info("Global ONNX InferenceSessions initialized successfully.")
-except Exception as e:  # noqa: BLE001
-    import sys, traceback
-    print("=" * 60, file=sys.stderr)
-    print("FATAL: ONNX session initialisation failed at startup", file=sys.stderr)
-    traceback.print_exc(file=sys.stderr)
-    print("=" * 60, file=sys.stderr)
-    sys.stderr.flush()
-    logger.warning("Could not initialize global ONNX sessions: %s", e)
+if _ort_available:
+    try:
+        YOLO8M_SESSION = ort.InferenceSession("trained_models/yolov8m.onnx", providers=["CPUExecutionProvider"])
+        YOLO26N_SESSION = ort.InferenceSession("trained_models/yolo26n.onnx", providers=["CPUExecutionProvider"])
+        logger.info("Global ONNX InferenceSessions initialized successfully.")
+    except Exception as e:  # noqa: BLE001
+        print("=" * 60, file=sys.stderr)
+        print("FATAL: ONNX session initialisation failed at startup", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        sys.stderr.flush()
+        logger.warning("Could not initialize global ONNX sessions: %s", e)
+else:
+    logger.warning("Skipping ONNX session load — onnxruntime not available")
 
 
 # ---------------------------------------------------------------------------
