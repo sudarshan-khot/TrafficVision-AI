@@ -14,13 +14,26 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/trafficvision"
 
-    # MinIO / S3 Storage
+    # ── Storage backend selector ───────────────────────────────────────────
+    # "minio"    — local dockerized MinIO (development default)
+    # "supabase" — Supabase object storage (production)
+    STORAGE_BACKEND: str = "minio"
+
+    # MinIO / S3 Storage (used when STORAGE_BACKEND=minio)
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_PUBLIC_ENDPOINT: str | None = None
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "traffic-images"
     MINIO_SECURE: bool = False
+
+    # Supabase S3-compatible Storage (used when STORAGE_BACKEND=supabase)
+    # Credentials from Supabase dashboard: Storage → S3 Access
+    SUPABASE_PROJECT_REF: str = ""           # e.g. "abcdefghijklmnop"
+    SUPABASE_S3_ACCESS_KEY_ID: str = ""      # S3 Access Key ID
+    SUPABASE_S3_SECRET_ACCESS_KEY: str = ""  # S3 Secret Access Key
+    SUPABASE_S3_REGION: str = "ap-south-1"   # region shown in S3 Access panel
+    SUPABASE_BUCKET: str = "traffic-images"
 
     # AWS / S3 / R2 Environment Variable Overrides
     AWS_ACCESS_KEY_ID: str | None = None
@@ -103,6 +116,18 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Return CORS_ALLOWED_ORIGINS as a parsed list."""
         return [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def supabase_s3_endpoint(self) -> str:
+        """
+        Derive the Supabase S3-compatible endpoint from the project ref.
+
+        Format: ``<project-ref>.supabase.co/storage/v1/s3``
+        The MinIO SDK strips the scheme, so we return the host+path only.
+        """
+        if not self.SUPABASE_PROJECT_REF:
+            raise ValueError("SUPABASE_PROJECT_REF must be set when STORAGE_BACKEND=supabase")
+        return f"{self.SUPABASE_PROJECT_REF}.supabase.co/storage/v1/s3"
 
 
 # Module-level singleton — imported everywhere as `from app.config import settings`

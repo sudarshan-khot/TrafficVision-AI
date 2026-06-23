@@ -13,6 +13,7 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: traffic-images
       MINIO_SECURE: "false"
+      STORAGE_BACKEND: minio
       CORS_ALLOWED_ORIGINS: http://localhost:5173
       MODEL_DIR: trained_models
       APP_ENV: development

@@ -18,7 +18,10 @@ from alembic.config import Config
 from fastapi import FastAPI
 
 from app.config import settings
-from app.services.storage_service import StorageService
+from app.services.storage_service import (
+    StorageService,
+    MinioStorageBackend,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,17 +114,48 @@ async def run_startup(app: FastAPI, *, skip_models: bool = False) -> None:
             await asyncio.sleep(delay)
 
     try:
-        storage = StorageService(
-            endpoint=settings.MINIO_ENDPOINT,
-            access_key=settings.MINIO_ACCESS_KEY,
-            secret_key=settings.MINIO_SECRET_KEY,
-            bucket=settings.MINIO_BUCKET,
-            secure=settings.MINIO_SECURE,
-            public_endpoint=settings.MINIO_PUBLIC_ENDPOINT,
-        )
+        backend_name = settings.STORAGE_BACKEND.lower()
+        if backend_name == "supabase":
+            if not settings.SUPABASE_PROJECT_REF:
+                raise ValueError("STORAGE_BACKEND=supabase requires SUPABASE_PROJECT_REF to be set.")
+            if not settings.SUPABASE_S3_ACCESS_KEY_ID or not settings.SUPABASE_S3_SECRET_ACCESS_KEY:
+                raise ValueError(
+                    "STORAGE_BACKEND=supabase requires SUPABASE_S3_ACCESS_KEY_ID and "
+                    "SUPABASE_S3_SECRET_ACCESS_KEY to be set."
+                )
+            backend = MinioStorageBackend(
+                endpoint=settings.supabase_s3_endpoint,
+                access_key=settings.SUPABASE_S3_ACCESS_KEY_ID,
+                secret_key=settings.SUPABASE_S3_SECRET_ACCESS_KEY,
+                bucket=settings.SUPABASE_BUCKET,
+                secure=True,  # Supabase always uses HTTPS
+            )
+            bucket_name = settings.SUPABASE_BUCKET
+            logger.info(
+                "Storage backend: Supabase S3 (endpoint: %s, bucket: %s)",
+                settings.supabase_s3_endpoint,
+                bucket_name,
+            )
+        else:
+            backend = MinioStorageBackend(
+                endpoint=settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                bucket=settings.MINIO_BUCKET,
+                secure=settings.MINIO_SECURE,
+                public_endpoint=settings.MINIO_PUBLIC_ENDPOINT,
+            )
+            bucket_name = settings.MINIO_BUCKET
+            logger.info(
+                "Storage backend: MinIO (endpoint: %s, bucket: %s)",
+                settings.MINIO_ENDPOINT,
+                bucket_name,
+            )
+
+        storage = StorageService(backend=backend, bucket=bucket_name)
         await storage.ensure_bucket()
         app.state.storage_service = storage
-        logger.info("MinIO StorageService ready (bucket: %s)", settings.MINIO_BUCKET)
+        logger.info("StorageService ready (backend=%s, bucket=%s)", backend_name, bucket_name)
     except Exception as exc:  # noqa: BLE001
         logger.warning("StorageService initialisation failed: %s", exc)
         app.state.storage_service = None
