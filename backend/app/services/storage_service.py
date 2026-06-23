@@ -283,10 +283,15 @@ class SupabaseS3Backend:
         return StorageUnavailableError(msg, cause=exc)
 
     def ensure_bucket(self) -> None:
-        """Verify the bucket is accessible. Supabase buckets are pre-created in the
-        dashboard, so we just do a lightweight head_bucket check."""
+        """Verify the bucket is accessible.
+        
+        Supabase does not support HeadBucket (returns 403), so we use
+        list_objects_v2 with max_keys=1 as a lightweight connectivity check.
+        A NoSuchBucket error means the bucket doesn't exist; any successful
+        response (even empty) means the bucket is accessible.
+        """
         try:
-            self._s3.head_bucket(Bucket=self._bucket)
+            self._s3.list_objects_v2(Bucket=self._bucket, MaxKeys=1)
             logger.debug("Bucket accessible: %s", self._bucket)
         except Exception as exc:
             from botocore.exceptions import ClientError, EndpointConnectionError, ConnectTimeoutError
@@ -294,7 +299,7 @@ class SupabaseS3Backend:
                 raise self._wrap(exc, "ensure_bucket") from exc
             if isinstance(exc, ClientError):
                 code = exc.response.get("Error", {}).get("Code", "")
-                if code == "404":
+                if code in ("404", "NoSuchBucket"):
                     raise StorageUnavailableError(
                         f"Bucket '{self._bucket}' not found in Supabase. "
                         "Create it in the Supabase dashboard → Storage.",
@@ -303,7 +308,7 @@ class SupabaseS3Backend:
                 if code in ("403", "AccessDenied"):
                     raise StorageUnavailableError(
                         f"Access denied to bucket '{self._bucket}'. "
-                        "Check your S3 Access Key credentials.",
+                        "Check your S3 Access Key credentials in Supabase → Storage → S3 Access.",
                         cause=exc,
                     ) from exc
                 raise self._wrap(exc, "ensure_bucket") from exc

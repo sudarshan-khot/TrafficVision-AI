@@ -5,7 +5,6 @@ Requirements: 4.1–4.5
 """
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, status
@@ -98,7 +97,9 @@ async def get_violation(
         for ext in ("jpg", "png"):
             candidate = f"original/{violation.image_id}.{ext}"
             try:
-                await asyncio.to_thread(storage._client.stat_object, storage._bucket, candidate)
+                # Use get_object as a probe — works for both MinIO and Supabase S3.
+                # We discard the data; we only need to know if the object exists.
+                await storage.get_object(candidate)
                 original_image_url = await storage.get_presigned_url(
                     candidate,
                     expiry_seconds=3600,
