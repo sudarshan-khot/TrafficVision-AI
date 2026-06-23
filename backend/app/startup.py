@@ -146,19 +146,22 @@ async def run_startup(app: FastAPI, *, skip_models: bool = False) -> None:
             #
             # Credentials resolved from either SUPABASE_S3_* or AWS_* vars by
             # the config validator.
-            access_key = settings.MINIO_ACCESS_KEY
-            secret_key = settings.MINIO_SECRET_KEY
+            access_key = settings.SUPABASE_S3_ACCESS_KEY_ID or settings.MINIO_ACCESS_KEY
+            secret_key = settings.SUPABASE_S3_SECRET_ACCESS_KEY or settings.MINIO_SECRET_KEY
             region = settings.SUPABASE_S3_REGION or settings.AWS_REGION or "ap-south-1"
             bucket_name = settings.SUPABASE_BUCKET or settings.MINIO_BUCKET
 
             # Build the full endpoint URL.
-            # MINIO_ENDPOINT at this point holds the host+path without scheme,
-            # e.g. "dvibhmdfprwxqjupoxfw.supabase.co/storage/v1/s3"
-            raw_endpoint = settings.MINIO_ENDPOINT or ""
-            if raw_endpoint and not raw_endpoint.startswith("http"):
-                endpoint_url = f"https://{raw_endpoint}"
+            # Use the canonical supabase_s3_endpoint if project ref is available,
+            # otherwise fall back to MINIO_ENDPOINT/AWS_ENDPOINT_URL.
+            if settings.SUPABASE_PROJECT_REF:
+                endpoint_url = f"https://{settings.supabase_s3_endpoint}"
             else:
-                endpoint_url = raw_endpoint
+                raw_endpoint = settings.MINIO_ENDPOINT or ""
+                if raw_endpoint and not raw_endpoint.startswith("http"):
+                    endpoint_url = f"https://{raw_endpoint}"
+                else:
+                    endpoint_url = raw_endpoint
 
             if not endpoint_url or not access_key or not secret_key:
                 raise ValueError(
