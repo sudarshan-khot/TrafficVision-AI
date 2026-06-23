@@ -21,6 +21,7 @@ from app.config import settings
 from app.services.storage_service import (
     StorageService,
     MinioStorageBackend,
+    SupabaseS3Backend,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,27 +141,46 @@ async def run_startup(app: FastAPI, *, skip_models: bool = False) -> None:
         backend_name = settings.STORAGE_BACKEND.lower()
         app.state.storage_init_error = None  # will be overwritten on failure
         if backend_name == "supabase":
-            # Credentials are resolved from either SUPABASE_S3_* or AWS_* vars
-            # by the config validator. MINIO_ENDPOINT holds the full S3 endpoint
-            # host+path (e.g. dvibhmdfprwxqjupoxfw.supabase.co/storage/v1/s3).
-            if not settings.MINIO_ENDPOINT or not settings.MINIO_ACCESS_KEY or not settings.MINIO_SECRET_KEY:
+            # boto3 is used for Supabase because the MinIO SDK rejects endpoint
+            # URLs that contain a path component (/storage/v1/s3).
+            #
+            # Credentials resolved from either SUPABASE_S3_* or AWS_* vars by
+            # the config validator.
+            access_key = settings.MINIO_ACCESS_KEY
+            secret_key = settings.MINIO_SECRET_KEY
+            region = settings.SUPABASE_S3_REGION or settings.AWS_REGION or "ap-south-1"
+            bucket_name = settings.SUPABASE_BUCKET or settings.MINIO_BUCKET
+
+            # Build the full endpoint URL.
+            # MINIO_ENDPOINT at this point holds the host+path without scheme,
+            # e.g. "dvibhmdfprwxqjupoxfw.supabase.co/storage/v1/s3"
+            raw_endpoint = settings.MINIO_ENDPOINT or ""
+            if raw_endpoint and not raw_endpoint.startswith("http"):
+                endpoint_url = f"https://{raw_endpoint}"
+            else:
+                endpoint_url = raw_endpoint
+
+            if not endpoint_url or not access_key or not secret_key:
                 raise ValueError(
                     "STORAGE_BACKEND=supabase requires AWS_ENDPOINT_URL (or SUPABASE_PROJECT_REF), "
                     "AWS_ACCESS_KEY_ID (or SUPABASE_S3_ACCESS_KEY_ID), and "
-                    "AWS_SECRET_ACCESS_KEY (or SUPABASE_S3_SECRET_ACCESS_KEY) to be set."
+                    "AWS_SECRET_ACCESS_KEY (or SUPABASE_S3_SECRET_ACCESS_KEY) to be set. "
+                    f"Got endpoint={endpoint_url!r}, access_key={'set' if access_key else 'NOT SET'}, "
+                    f"secret_key={'set' if secret_key else 'NOT SET'}"
                 )
-            bucket_name = settings.SUPABASE_BUCKET or settings.MINIO_BUCKET
-            backend = MinioStorageBackend(
-                endpoint=settings.MINIO_ENDPOINT,
-                access_key=settings.MINIO_ACCESS_KEY,
-                secret_key=settings.MINIO_SECRET_KEY,
+
+            backend = SupabaseS3Backend(
+                endpoint_url=endpoint_url,
+                access_key=access_key,
+                secret_key=secret_key,
+                region=region,
                 bucket=bucket_name,
-                secure=True,  # Supabase always HTTPS
             )
             logger.info(
-                "Storage backend: Supabase S3 (endpoint: %s, bucket: %s)",
-                settings.MINIO_ENDPOINT,
+                "Storage backend: Supabase S3 (endpoint: %s, bucket: %s, region: %s)",
+                endpoint_url,
                 bucket_name,
+                region,
             )
         else:
             bucket_name = settings.MINIO_BUCKET

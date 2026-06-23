@@ -41,10 +41,8 @@ async def health_check(
             storage_status = "unreachable"
             storage_error = "StorageService was not initialised at startup. Check server logs for the root cause."
         else:
-            exists = await _bucket_exists(storage)
-            if not exists:
-                storage_status = "unreachable"
-                storage_error = f"Bucket '{storage._bucket}' does not exist or is inaccessible."  # noqa: SLF001
+            await _bucket_exists(storage)
+            # raises StorageUnavailableError on failure — caught below
     except Exception as exc:  # noqa: BLE001
         storage_status = "unreachable"
         storage_error = str(exc)
@@ -67,6 +65,6 @@ async def health_check(
 
 
 async def _bucket_exists(storage: StorageService) -> bool:
-    import asyncio
-
-    return await asyncio.to_thread(storage._client.bucket_exists, storage._bucket)  # noqa: SLF001
+    """Check bucket accessibility by calling ensure_bucket (raises on failure)."""
+    await storage.ensure_bucket()
+    return True
