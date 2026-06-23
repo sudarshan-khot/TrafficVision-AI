@@ -259,6 +259,7 @@ class SupabaseS3Backend:
         bucket: str,
     ) -> None:
         import boto3
+        from botocore.config import Config
 
         self._bucket = bucket
         self._endpoint_url = endpoint_url
@@ -269,6 +270,13 @@ class SupabaseS3Backend:
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             region_name=region,
+            # Supabase S3 requires path-style URLs (forcePathStyle in JS SDK).
+            # Without this boto3 uses virtual-hosted style, which breaks
+            # request signing and causes SignatureDoesNotMatch errors.
+            config=Config(
+                s3={"addressing_style": "path"},
+                signature_version="s3v4",
+            ),
         )
         logger.info(
             "SupabaseS3Backend initialised (endpoint=%s, bucket=%s, region=%s)",
