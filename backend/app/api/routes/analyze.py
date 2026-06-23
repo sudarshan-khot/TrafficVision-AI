@@ -45,9 +45,14 @@ async def analyze_image(
     evidence_uploader=Depends(get_evidence_uploader),
 ):
     if storage is None or detector is None or ocr is None:
+        missing = [name for name, svc in [("storage", storage), ("detector", detector), ("ocr", ocr)] if svc is None]
+        logger.error("Analysis services unavailable — not initialised: %s", missing)
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"detail": "Analysis services unavailable"},
+            content={
+                "detail": "Analysis services unavailable",
+                "reason": f"The following services failed to initialise at startup: {missing}. Check server logs.",
+            },
         )
 
     resolved_path = body.object_path
@@ -68,10 +73,14 @@ async def analyze_image(
                     status_code=status.HTTP_404_NOT_FOUND,
                     content={"detail": "Image not found"},
                 )
-    except StorageUnavailableError:
+    except StorageUnavailableError as exc:
+        logger.error("Storage unavailable fetching image %s: %s", body.image_id, exc)
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"detail": "Storage service unavailable"},
+            content={
+                "detail": "Storage service unavailable",
+                "reason": str(exc),
+            },
         )
     except Exception:  # noqa: BLE001
         return JSONResponse(

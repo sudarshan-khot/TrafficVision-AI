@@ -182,7 +182,19 @@ async def run_startup(app: FastAPI, *, skip_models: bool = False) -> None:
         app.state.storage_service = storage
         logger.info("StorageService ready (backend=%s, bucket=%s)", backend_name, bucket_name)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("StorageService initialisation failed: %s", exc)
+        import traceback as _tb
+        logger.error(
+            "StorageService initialisation failed — storage will be unavailable.\n"
+            "  backend : %s\n"
+            "  endpoint: %s\n"
+            "  bucket  : %s\n"
+            "  error   : %s\n%s",
+            settings.STORAGE_BACKEND,
+            settings.MINIO_ENDPOINT or "<not set>",
+            locals().get("bucket_name", "<not set>"),
+            exc,
+            _tb.format_exc(),
+        )
         app.state.storage_service = None
 
     if skip_models:

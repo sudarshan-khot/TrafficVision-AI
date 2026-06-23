@@ -5,6 +5,7 @@ Requirements: 1.1–1.5
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -21,6 +22,7 @@ from app.services.image_service import (
 )
 from app.services.storage_service import StorageService, StorageUnavailableError
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -33,7 +35,10 @@ async def upload_image(
     if storage is None:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"detail": "Storage service unavailable"},
+            content={
+                "detail": "Storage service unavailable",
+                "reason": "Storage backend failed to initialise at startup. Check server logs for the root cause.",
+            },
         )
 
     image_service = ImageService(storage)
@@ -60,10 +65,14 @@ async def upload_image(
             file_bytes=file_bytes,
             content_type=content_type,
         )
-    except StorageUnavailableError:
+    except StorageUnavailableError as exc:
+        logger.error("Storage unavailable during upload (image_id=%s): %s", image_id, exc)
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"detail": "Storage service unavailable"},
+            content={
+                "detail": "Storage service unavailable",
+                "reason": str(exc),
+            },
         )
 
     _ = db  # reserved for future metadata persistence

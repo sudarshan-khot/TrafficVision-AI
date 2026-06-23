@@ -26,35 +26,44 @@ async def health_check(
 ):
     timestamp = datetime.now(timezone.utc).isoformat()
     db_status = "ok"
+    db_error: str | None = None
     storage_status = "ok"
+    storage_error: str | None = None
 
     try:
         await db.execute(text("SELECT 1"))
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         db_status = "unreachable"
+        db_error = str(exc)
 
     try:
         if storage is None:
             storage_status = "unreachable"
+            storage_error = "StorageService was not initialised at startup. Check server logs for the root cause."
         else:
             exists = await _bucket_exists(storage)
             if not exists:
                 storage_status = "unreachable"
-    except Exception:  # noqa: BLE001
+                storage_error = f"Bucket '{storage._bucket}' does not exist or is inaccessible."  # noqa: SLF001
+    except Exception as exc:  # noqa: BLE001
         storage_status = "unreachable"
+        storage_error = str(exc)
 
     overall = "healthy" if db_status == "ok" and storage_status == "ok" else "degraded"
     status_code = status.HTTP_200_OK if overall == "healthy" else status.HTTP_503_SERVICE_UNAVAILABLE
 
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "status": overall,
-            "database": db_status,
-            "storage": storage_status,
-            "timestamp": timestamp,
-        },
-    )
+    body: dict = {
+        "status": overall,
+        "database": db_status,
+        "storage": storage_status,
+        "timestamp": timestamp,
+    }
+    if db_error:
+        body["database_error"] = db_error
+    if storage_error:
+        body["storage_error"] = storage_error
+
+    return JSONResponse(status_code=status_code, content=body)
 
 
 async def _bucket_exists(storage: StorageService) -> bool:
