@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     On startup:
       - Creates the async SQLAlchemy session factory.
       - Instantiates StorageService and ensures the MinIO bucket exists.
-      - Loads ML model singletons (DetectionService, OCRPipeline).
+      - Loads ML model singletons (DetectionService).
       - Creates ViolationEngine, EvidenceGenerator, EvidenceUploader.
 
     All heavy objects are stored on ``app.state`` so that FastAPI Depends
