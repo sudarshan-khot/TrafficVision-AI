@@ -154,4 +154,13 @@ class Settings(BaseSettings):
 
 
 # Module-level singleton — imported everywhere as `from app.config import settings`
-settings = Settings()
+try:
+    settings = Settings()
+except Exception:  # noqa: BLE001
+    import sys, traceback
+    print("=" * 60, file=sys.stderr)
+    print("FATAL: Failed to load application settings from environment", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    sys.stderr.flush()
+    raise

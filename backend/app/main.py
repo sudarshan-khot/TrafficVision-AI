@@ -33,6 +33,12 @@ try:
     YOLO26N_SESSION = ort.InferenceSession("trained_models/yolo26n.onnx", providers=["CPUExecutionProvider"])
     logger.info("Global ONNX InferenceSessions initialized successfully.")
 except Exception as e:  # noqa: BLE001
+    import sys, traceback
+    print("=" * 60, file=sys.stderr)
+    print("FATAL: ONNX session initialisation failed at startup", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    sys.stderr.flush()
     logger.warning("Could not initialize global ONNX sessions: %s", e)
 
 
