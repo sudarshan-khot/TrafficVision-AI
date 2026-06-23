@@ -145,6 +145,10 @@ class Settings(BaseSettings):
             if aws_secret_key:
                 data["MINIO_SECRET_KEY"] = aws_secret_key
                 data["SUPABASE_S3_SECRET_ACCESS_KEY"] = aws_secret_key
+                
+            aws_region = data.get("AWS_REGION") or os.getenv("AWS_REGION")
+            if aws_region:
+                data["SUPABASE_S3_REGION"] = aws_region
 
             # Derive SUPABASE_PROJECT_REF from the endpoint host if not already set
             if not data.get("SUPABASE_PROJECT_REF"):
@@ -171,12 +175,12 @@ class Settings(BaseSettings):
         """
         Derive the Supabase S3-compatible endpoint from the project ref.
 
-        Format: ``<project-ref>.supabase.co/storage/v1/s3``
+        Format: ``<project-ref>.storage.supabase.co/storage/v1/s3``
         The MinIO SDK strips the scheme, so we return the host+path only.
         """
         if not self.SUPABASE_PROJECT_REF:
             raise ValueError("SUPABASE_PROJECT_REF must be set when STORAGE_BACKEND=supabase")
-        return f"{self.SUPABASE_PROJECT_REF}.supabase.co/storage/v1/s3"
+        return f"{self.SUPABASE_PROJECT_REF}.storage.supabase.co/storage/v1/s3"
 
 
 # Module-level singleton — imported everywhere as `from app.config import settings`
