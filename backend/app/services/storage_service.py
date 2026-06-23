@@ -319,6 +319,16 @@ class SupabaseS3Backend:
                         "Check your S3 Access Key credentials in Supabase → Storage → S3 Access.",
                         cause=exc,
                     ) from exc
+                if code == "SignatureDoesNotMatch":
+                    raise StorageUnavailableError(
+                        "SignatureDoesNotMatch: S3 Request Signature failed. "
+                        "Check the following:\n"
+                        f"1. Is the region '{self._region}' exactly matching the Region in Supabase Dashboard -> Project Settings -> Storage -> S3 Configuration?\n"
+                        f"2. Are the Access Key and Secret Key copied exactly without trailing spaces?\n"
+                        f"3. Using endpoint URL: {self._endpoint_url}\n"
+                        "Please update your Render environment variables (e.g. SUPABASE_S3_REGION) accordingly.",
+                        cause=exc,
+                    ) from exc
                 raise self._wrap(exc, "ensure_bucket") from exc
             raise self._wrap(exc, "ensure_bucket") from exc
 
