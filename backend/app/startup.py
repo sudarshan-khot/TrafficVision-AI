@@ -71,7 +71,18 @@ def run_migrations() -> None:
     """Apply Alembic migrations programmatically (``alembic upgrade head``)."""
     backend_root = Path(__file__).resolve().parent.parent
     alembic_cfg = Config(str(backend_root / "alembic.ini"))
-    sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    # Convert asyncpg URL back to a sync psycopg2-compatible URL for Alembic
+    sync_url = settings.DATABASE_URL
+    sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql://")
+    # asyncpg uses ssl=require; psycopg2 uses sslmode=require
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    parsed = urlparse(sync_url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    ssl_val = params.pop("ssl", [None])[0]
+    if ssl_val == "require":
+        params["sslmode"] = ["require"]
+    new_query = urlencode({k: v[0] for k, v in params.items()})
+    sync_url = urlunparse(parsed._replace(query=new_query))
     alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
     command.upgrade(alembic_cfg, "head")
     logger.info("Alembic migrations applied")

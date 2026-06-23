@@ -61,12 +61,38 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def validate_database_url(cls, v: Any) -> Any:
-        """Ensure the database URL uses the asyncpg driver, even if neon/render provides postgresql://."""
+        """
+        Ensure the database URL uses the asyncpg driver and translate
+        psycopg2-style query params to asyncpg-compatible ones.
+
+        - postgres:// / postgresql:// → postgresql+asyncpg://
+        - sslmode=require → ssl=require  (asyncpg uses 'ssl', not 'sslmode')
+        - channel_binding=require is dropped (not supported by asyncpg)
+        """
         if isinstance(v, str):
             if v.startswith("postgres://"):
                 v = v.replace("postgres://", "postgresql+asyncpg://", 1)
             elif v.startswith("postgresql://"):
                 v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+            # Translate sslmode → ssl (asyncpg-compatible)
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+            parsed = urlparse(v)
+            params = parse_qs(parsed.query, keep_blank_values=True)
+
+            # Drop unsupported params
+            sslmode = params.pop("sslmode", [None])[0]
+            params.pop("channel_binding", None)
+
+            # Map sslmode values to asyncpg ssl values
+            if sslmode in ("require", "verify-ca", "verify-full"):
+                params["ssl"] = ["require"]
+            elif sslmode == "disable":
+                params["ssl"] = ["disable"]
+
+            new_query = urlencode({k: v[0] for k, v in params.items()})
+            v = urlunparse(parsed._replace(query=new_query))
+
         return v
 
     @model_validator(mode="before")
