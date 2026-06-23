@@ -10,8 +10,6 @@ Responsibilities
 """
 from __future__ import annotations
 
-from __future__ import annotations
-
 import sys
 import traceback
 import logging
@@ -95,17 +93,48 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # Deferred imports keep module-level side-effects (heavy ML libs) out of
     # the import chain until the application actually starts.
-    from app.startup import run_startup
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    try:
+        from app.startup import run_startup
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    except Exception:
+        print("=" * 60, file=sys.stderr)
+        print("FATAL: failed to import startup dependencies", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        sys.stderr.flush()
+        raise
 
     # ------------------------------------------------------------------ DB
-    engine = create_async_engine(settings.DATABASE_URL, echo=(settings.APP_ENV == "development"))
-    app.state.engine = engine
-    app.state.AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
-    logger.info("Database engine created: %s", settings.DATABASE_URL.split("@")[-1])
+    try:
+        engine = create_async_engine(settings.DATABASE_URL, echo=(settings.APP_ENV == "development"))
+        app.state.engine = engine
+        app.state.AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+        logger.info("Database engine created: %s", settings.DATABASE_URL.split("@")[-1])
+        print(f"INFO: Database engine created OK", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception:
+        print("=" * 60, file=sys.stderr)
+        print("FATAL: failed to create database engine — check DATABASE_URL", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        sys.stderr.flush()
+        raise
 
     skip_models = settings.APP_ENV == "test"
-    await run_startup(app, skip_models=skip_models)
+
+    try:
+        print("INFO: running startup (migrations + storage)...", file=sys.stderr)
+        sys.stderr.flush()
+        await run_startup(app, skip_models=skip_models)
+        print("INFO: run_startup() completed OK", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception:
+        print("=" * 60, file=sys.stderr)
+        print("FATAL: run_startup() failed", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        sys.stderr.flush()
+        raise
 
     if not skip_models:
         # ------------------------------------------------------------------ ML Models

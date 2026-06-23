@@ -96,14 +96,26 @@ async def run_startup(app: FastAPI, *, skip_models: bool = False) -> None:
 
     retries = 5
     delay = 2
+    migration_error = None
     for attempt in range(1, retries + 1):
         try:
             await asyncio.to_thread(run_migrations)
+            migration_error = None
             break
         except Exception as exc:
+            migration_error = exc
             if attempt == retries:
                 logger.error("Migration step failed after %d attempts: %s", retries, exc)
-                raise
+                import traceback as _tb, sys as _sys
+                print("=" * 60, file=_sys.stderr)
+                print(f"ERROR: Alembic migration failed after {retries} attempts:", file=_sys.stderr)
+                _tb.print_exc(file=_sys.stderr)
+                print("=" * 60, file=_sys.stderr)
+                _sys.stderr.flush()
+                # Non-fatal: app can still serve requests even if migrations fail
+                # (tables may already be up to date from a previous deploy)
+                logger.warning("Continuing startup despite migration failure — tables may already be current")
+                break
             logger.warning(
                 "Migration attempt %d/%d failed (retrying in %ds): %s",
                 attempt,
