@@ -72,7 +72,19 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def resolve_storage_env(cls, data: Any) -> Any:
-        """Resolve AWS/R2 variables and map them to standard storage variables."""
+        """
+        Normalise storage environment variables.
+
+        Supports two input conventions:
+        1. Native vars: MINIO_* / SUPABASE_* (local dev and clean prod setup)
+        2. AWS-style vars: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL
+           plus optional BUCKET_NAME — used when deploying via Render/Railway with
+           Supabase S3-compatible credentials entered as AWS_* keys.
+
+        When AWS_ENDPOINT_URL is present, its host is extracted and written into
+        MINIO_ENDPOINT so that MinioStorageBackend receives a clean host:port/path
+        string regardless of which convention was used.
+        """
         if not isinstance(data, dict):
             return data
 
@@ -82,33 +94,44 @@ class Settings(BaseSettings):
         aws_endpoint = data.get("AWS_ENDPOINT_URL") or os.getenv("AWS_ENDPOINT_URL")
         aws_access_key = data.get("AWS_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
         aws_secret_key = data.get("AWS_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
+        bucket_name = data.get("BUCKET_NAME") or os.getenv("BUCKET_NAME")
 
         if aws_endpoint:
             parsed = urlparse(aws_endpoint)
-            # Minio client expects endpoint host (+ optional port), not the full URL scheme.
+            # MinIO client expects host (+ path), not the full URL with scheme.
             endpoint_host = parsed.netloc if parsed.netloc else aws_endpoint
-            if endpoint_host.startswith("http://"):
-                endpoint_host = endpoint_host[7:]
-            elif endpoint_host.startswith("https://"):
-                endpoint_host = endpoint_host[8:]
+            # Strip any accidental scheme prefix
+            for prefix in ("https://", "http://"):
+                if endpoint_host.startswith(prefix):
+                    endpoint_host = endpoint_host[len(prefix):]
+
+            # Append path component for Supabase S3 endpoint
+            # e.g. dvibhmdfprwxqjupoxfw.supabase.co/storage/v1/s3
+            if parsed.path and parsed.path != "/":
+                endpoint_host = endpoint_host.rstrip("/") + parsed.path
 
             data["MINIO_ENDPOINT"] = endpoint_host
-            data["MINIO_SECURE"] = parsed.scheme == "https" if parsed.scheme else True
-            if "r2.cloudflarestorage.com" in endpoint_host:
-                data["MINIO_SECURE"] = True
+            data["MINIO_SECURE"] = (parsed.scheme == "https") if parsed.scheme else True
 
             if aws_access_key:
                 data["MINIO_ACCESS_KEY"] = aws_access_key
+                data["SUPABASE_S3_ACCESS_KEY_ID"] = aws_access_key
             if aws_secret_key:
                 data["MINIO_SECRET_KEY"] = aws_secret_key
+                data["SUPABASE_S3_SECRET_ACCESS_KEY"] = aws_secret_key
 
-            # Clean public endpoint if present
-            pub_endpoint = data.get("MINIO_PUBLIC_ENDPOINT") or aws_endpoint
-            if pub_endpoint:
-                if "://" in pub_endpoint:
-                    parsed_pub = urlparse(pub_endpoint)
-                    pub_endpoint = parsed_pub.netloc if parsed_pub.netloc else pub_endpoint
-                data["MINIO_PUBLIC_ENDPOINT"] = pub_endpoint
+            # Derive SUPABASE_PROJECT_REF from the endpoint host if not already set
+            if not data.get("SUPABASE_PROJECT_REF"):
+                # e.g. dvibhmdfprwxqjupoxfw.supabase.co → dvibhmdfprwxqjupoxfw
+                host_part = (parsed.netloc or aws_endpoint).split(".")[0]
+                data["SUPABASE_PROJECT_REF"] = host_part
+
+        # Map BUCKET_NAME → both bucket fields so either STORAGE_BACKEND works
+        if bucket_name:
+            if not data.get("MINIO_BUCKET"):
+                data["MINIO_BUCKET"] = bucket_name
+            if not data.get("SUPABASE_BUCKET"):
+                data["SUPABASE_BUCKET"] = bucket_name
 
         return data
 
